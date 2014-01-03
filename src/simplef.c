@@ -8,6 +8,7 @@ GCompOp compositing_mode = GCompOpAssign;
 Window *window;
 TextLayer *layer_date_text;
 TextLayer *layer_wday_text;
+TextLayer *layer_weeknumber_text;
 TextLayer *layer_time_text;
 Layer *layer_line;
 
@@ -22,6 +23,33 @@ GBitmap *img_bt_disconnect;
 TextLayer *layer_batt_text;
 int charge_percent = 0;
 int cur_day = -1;
+
+
+const char *local_day_name[] = {
+  "Sonntag",
+  "Montag",
+  "Dienstag",
+  "Mittwoch",
+  "Donnerstag",
+  "Freitag",
+  "Samstag"
+};
+
+const char *local_month_name[] = {
+  "Januar",
+  "Februar",
+  "März",
+  "April",
+  "Mai",
+  "Juni",
+  "Juli",
+  "August",
+  "September",
+  "Oktober",
+  "November",
+  "Dezember"
+};
+
 
 void handle_battery(BatteryChargeState charge_state) {
     static char battery_text[] = "100 ";
@@ -78,7 +106,9 @@ void update_time(struct tm *tick_time) {
     // Need to be static because they're used by the system later.
     static char time_text[] = "00:00";
     static char date_text[] = "Xxxxxxxxx 00";
-    static char wday_text[] = "Xxxxxxxxx";
+//     static char wday_text[] = "Xxxxxxxxx";
+    static char weeknumber_text[] = "KW00";
+    static char weeknumber[] = "00";
     
     char *time_format;
 
@@ -87,11 +117,17 @@ void update_time(struct tm *tick_time) {
     if (new_cur_day != cur_day) {
         cur_day = new_cur_day;
         
-        strftime(date_text, sizeof(date_text), "%B %e", tick_time);
+        strftime(date_text, sizeof(date_text), "%e. ", tick_time);
+        strcat(date_text, local_month_name[tick_time->tm_mon]);
         text_layer_set_text(layer_date_text, date_text);
 
-        strftime(wday_text, sizeof(wday_text), "%A", tick_time);
-        text_layer_set_text(layer_wday_text, wday_text);
+        text_layer_set_text(layer_wday_text, local_day_name[tick_time->tm_wday]);
+        
+        weeknumber_text[0] = '\0';
+        strcat(weeknumber_text, "KW");
+        strftime(weeknumber, sizeof(weeknumber), "%V", tick_time);
+        strcat(weeknumber_text, weeknumber);
+        text_layer_set_text(layer_weeknumber_text, weeknumber_text);
     }
 
     if (clock_is_24h_style()) {
@@ -105,10 +141,11 @@ void update_time(struct tm *tick_time) {
     // Kludge to handle lack of non-padded hour format string
     // for twelve hour clock.
     if (!clock_is_24h_style() && (time_text[0] == '0')) {
-        memmove(time_text, &time_text[1], sizeof(time_text) - 1);
+        text_layer_set_text(layer_time_text, &time_text[1]);
     }
-
-    text_layer_set_text(layer_time_text, time_text);
+    else{
+        text_layer_set_text(layer_time_text, time_text);
+    }
 }
 
 void set_style(void) {
@@ -121,6 +158,7 @@ void set_style(void) {
     window_set_background_color(window, background_color);
     text_layer_set_text_color(layer_time_text, foreground_color);
     text_layer_set_text_color(layer_wday_text, foreground_color);
+    text_layer_set_text_color(layer_weeknumber_text, foreground_color);
     text_layer_set_text_color(layer_date_text, foreground_color);
     text_layer_set_text_color(layer_batt_text, foreground_color);
     bitmap_layer_set_compositing_mode(layer_batt_img, compositing_mode);
@@ -170,23 +208,35 @@ void handle_init(void) {
     img_battery_low    = gbitmap_create_with_resource(RESOURCE_ID_IMAGE_BATTERY_LOW);
     img_battery_charge = gbitmap_create_with_resource(RESOURCE_ID_IMAGE_BATTERY_CHARGE);
 
-    // layers
-    layer_wday_text = text_layer_create(GRect(8, 47, 144-8, 168-68));
-    layer_date_text = text_layer_create(GRect(8, 68, 144-8, 168-68));
+    // layers (144 x 168 px)
+    layer_weeknumber_text = text_layer_create(GRect(30, 8, 144-60, 168-68));
+    layer_wday_text = text_layer_create(GRect(0, 47, 144, 168-47));
+    layer_date_text = text_layer_create(GRect(0, 68, 144, 168-68));
     layer_time_text = text_layer_create(GRect(7, 92, 144-7, 168-92));
     layer_batt_text = text_layer_create(GRect(3,20,30,20));
     layer_batt_img  = bitmap_layer_create(GRect(10, 10, 16, 16));
     layer_conn_img  = bitmap_layer_create(GRect(118, 12, 20, 20));
     layer_line      = layer_create(GRect(8, 97, 128, 2));
+    
+    //senter some of the texts
+    text_layer_set_text_alignment(layer_wday_text, GTextAlignmentCenter);
+    text_layer_set_text_alignment(layer_date_text, GTextAlignmentCenter);
+    text_layer_set_text_alignment(layer_weeknumber_text, GTextAlignmentCenter); 
+    
+    
 
+    text_layer_set_background_color(layer_weeknumber_text, GColorClear);
+    text_layer_set_font(layer_weeknumber_text,
+    fonts_get_system_font(FONT_KEY_ROBOTO_CONDENSED_21));
+    
     text_layer_set_background_color(layer_wday_text, GColorClear);
-    text_layer_set_font(layer_wday_text, fonts_load_custom_font(resource_get_handle(RESOURCE_ID_FONT_ROBOTO_CONDENSED_21)));
+    text_layer_set_font(layer_wday_text, fonts_get_system_font(FONT_KEY_ROBOTO_CONDENSED_21));
 
     text_layer_set_background_color(layer_date_text, GColorClear);
-    text_layer_set_font(layer_date_text, fonts_load_custom_font(resource_get_handle(RESOURCE_ID_FONT_ROBOTO_CONDENSED_21)));
+    text_layer_set_font(layer_date_text, fonts_get_system_font(FONT_KEY_ROBOTO_CONDENSED_21));
 
     text_layer_set_background_color(layer_time_text, GColorClear);
-    text_layer_set_font(layer_time_text, fonts_load_custom_font(resource_get_handle(RESOURCE_ID_FONT_ROBOTO_BOLD_SUBSET_49)));
+    text_layer_set_font(layer_time_text, fonts_get_system_font(FONT_KEY_ROBOTO_BOLD_SUBSET_49));
 
     text_layer_set_background_color(layer_batt_text, GColorClear);
     text_layer_set_font(layer_batt_text, fonts_get_system_font(FONT_KEY_FONT_FALLBACK));
@@ -203,6 +253,7 @@ void handle_init(void) {
     layer_add_child(window_layer, layer_line);
     layer_add_child(window_layer, bitmap_layer_get_layer(layer_batt_img));
     layer_add_child(window_layer, bitmap_layer_get_layer(layer_conn_img));
+    layer_add_child(window_layer, text_layer_get_layer(layer_weeknumber_text));
     layer_add_child(window_layer, text_layer_get_layer(layer_wday_text));
     layer_add_child(window_layer, text_layer_get_layer(layer_date_text));
     layer_add_child(window_layer, text_layer_get_layer(layer_time_text));
@@ -230,4 +281,6 @@ int main(void) {
     app_event_loop();
 
     handle_deinit();
+    
+    return 0;
 }
